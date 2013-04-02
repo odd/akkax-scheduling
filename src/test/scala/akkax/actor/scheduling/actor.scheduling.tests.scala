@@ -1,6 +1,5 @@
 package akkax.actor.scheduling
 
-import scheduling._
 import org.scalatest.FunSuite
 import scala.concurrent.duration.Duration
 import akka.event.Logging
@@ -9,17 +8,26 @@ import akka.actor.{ActorSystem, Props, Actor}
 import java.util.concurrent.TimeUnit
 import java.text.SimpleDateFormat
 import akkax.actor.scheduling.RecordingActor.Fetch
+import akkax.actor.scheduling.memory.MemoryScheduledMessageQueue
 
-class ScheduledMessageQueueTests extends FunSuite {
+class SchedulingExtensionTests extends FunSuite {
   val formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS")
   implicit val timeout = akka.util.Timeout(1000L)
-  val system = ActorSystem("TestSystem")
+  implicit val system = ActorSystem("TestSystem")
   import system._
-  val scheduledMessageService = system.actorOf(Props[ScheduledMessageProvider], name = "ScheduledMessageService")
-  system.scheduler.schedule(Duration.create(50, TimeUnit.MILLISECONDS), Duration.create(1, TimeUnit.SECONDS), scheduledMessageService, Tick)
+
+  val scheduling = SchedulingExtension(system, new MemoryScheduledMessageQueue)
+  import scheduling._
+  system.scheduler.schedule(
+    initialDelay = Duration.create(10, TimeUnit.SECONDS),
+    interval = Duration.create(1, TimeUnit.SECONDS),
+    receiver = system.actorOf(Props[Worker]),
+    message = Worker.Tick)
 
   test("scheduled messages are scheduled") {
-    val actor = system.actorOf(Props[RecordingActor])
+    println(s"test: scheduled messages are scheduled")
+    val actor = system.actorOf(Props[RecordingActor], name = "kalle")
+    println(s"actor: $actor")
     actor !@ "one" -> laterLiteral(3)
     actor !@ "two" -> laterLiteral(1)
     actor !@ "three" -> laterMilliseconds(7).toString
@@ -33,6 +41,7 @@ class ScheduledMessageQueueTests extends FunSuite {
     }
   }
 
+  /*
   test("scheduled messages can be cancelled") {
     val actor = system.actorOf(Props[RecordingActor])
     val one = actor !@ "one" -> laterLiteral(1)
@@ -47,6 +56,7 @@ class ScheduledMessageQueueTests extends FunSuite {
       case x ⇒ sys.error("Unknown reply: " + x)
     }
   }
+  */
 
   def laterLiteral(seconds: Int) = formatter.format(laterMilliseconds(seconds))
   def laterMilliseconds(seconds: Int) = System.currentTimeMillis() + 1000 * seconds
