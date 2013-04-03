@@ -15,6 +15,7 @@ class MapDBMemoryScheduledMessageQueue(file: File, password: Option[String] = No
     db.make()
   }
   val map: ConcurrentNavigableMap[Long, Array[ScheduledMessage]] = db.getTreeMap("akkax-scheduling-map")
+  println(map.asScala.mkString("!!! Loaded persistent messages:", "\n\t", "\n"))
   val commiting = new AtomicBoolean(false)
 
   private [this] val sentinelKey = Long.MaxValue
@@ -24,11 +25,9 @@ class MapDBMemoryScheduledMessageQueue(file: File, password: Option[String] = No
   }
 
   private [this] def commit() {
-    val time = System.currentTimeMillis()
-    try {
-      if (commiting.compareAndSet(false, true)) db.commit()
-    } catch {
-      case e: NullPointerException => // Ignore
+    if (commiting.compareAndSet(false, true)) {
+      db.commit()
+      commiting.compareAndSet(true, false)
     }
   }
 
@@ -58,11 +57,13 @@ class MapDBMemoryScheduledMessageQueue(file: File, password: Option[String] = No
 
   def dequeue(timestamp: Long): Iterable[ScheduledMessage] = {
     val messages = peek(timestamp)
-    println("messages(" + timestamp + "): " + messages.map(_.message).mkString(", "))
-    messages.map { sm => sm.nextOccurrence -> sm }.collect { case (Some(t), sm) => t -> sm }.foreach {
-      case (time, sm) => enqueue(time, sm)
+    if (messages.nonEmpty) {
+      println("messages(" + timestamp + "): " + messages.map(_.message).mkString(", "))
+      messages.map { sm => sm.nextOccurrence -> sm }.collect { case (Some(t), sm) => t -> sm }.foreach {
+        case (time, sm) => enqueue(time, sm)
+      }
+      storeSentinel(timestamp)
     }
-    storeSentinel(timestamp)
     messages
   }
 
