@@ -66,7 +66,7 @@ trait SchedulingTests { this: FunSuite =>
 
 class SchedulingSuite extends FunSuite with SchedulingTests {
   //def queues = Seq(new MemoryScheduledMessageQueue, new MapDBMemoryScheduledMessageQueue(new File("./akkax-scheduling-map.db")))
-  def queues = Seq(new MapDBMemoryScheduledMessageQueue(new File("./akkax-scheduling-map.db")))
+  def queues = Seq(new MapDBMemoryScheduledMessageQueue(new File("./.akkax-scheduling-map.db")))
   //def queues = Seq()
 
   queues.foreach(q => testsFor(withQueue(q)))

@@ -29,7 +29,7 @@ class SchedulingExtension(system: ExtendedActorSystem) extends Extension {
     queueRef.get.getOrElse(throw new IllegalStateException("No scheduled message queue registered."))
   }
 
-  private [scheduling] def registerQueue(queue: ScheduledMessageQueue) {
+  private [scheduling] def registerQueue(queue: ScheduledMessageQueue, validator: ScheduledMessage => Boolean) {
     val o = Option(queue)
     queueRef.set(o)
 
@@ -40,7 +40,7 @@ class SchedulingExtension(system: ExtendedActorSystem) extends Extension {
 
     o foreach { q =>
       import system._
-      val worker = system.actorOf(Props(new SchedulingWorker(q)))
+      val worker = system.actorOf(Props(new SchedulingWorker(q, validator)))
       workerCancellableRef.set(Some(system.scheduler.schedule(
         initialDelay = Duration.create(1, TimeUnit.SECONDS),
         interval = Duration.create(1, TimeUnit.SECONDS),
@@ -63,7 +63,7 @@ object SchedulingWorker {
   case object Tick extends SchedulingMessage
 }
 
-class SchedulingWorker(queue: ScheduledMessageQueue) extends Actor {
+class SchedulingWorker(queue: ScheduledMessageQueue, validator: ScheduledMessage => Boolean) extends Actor {
   import SchedulingWorker._
   def receive = {
     case Schedule(sender, receiver, message, expression) =>
@@ -72,9 +72,10 @@ class SchedulingWorker(queue: ScheduledMessageQueue) extends Actor {
       queue.cancel(sender, receiver, message, expression)
     case Tick =>
       queue.dequeue().foreach {
-        case sm: ScheduledMessage =>
+        case sm: ScheduledMessage if (validator(sm)) =>
           implicit val system = context.system
           sm.receiver.tell(sm.message, sm.sender.orNull)
+        case sm => println("Non valid message ignored [" + sm + "].")
       }
   }
 }
@@ -92,9 +93,9 @@ object SchedulingExtension extends ExtensionId[SchedulingExtension] with Extensi
    * @param system actor system associated with the returned extension instance.
    * @param queue queue to register.
    */
-  def apply(system: ActorSystem, queue: ScheduledMessageQueue): SchedulingExtension = {
+  def apply(system: ActorSystem, queue: ScheduledMessageQueue, validator: ScheduledMessage => Boolean = { _ => true }): SchedulingExtension = {
     val extension = super.apply(system)
-    extension.registerQueue(queue)
+    extension.registerQueue(queue, validator)
     extension
   }
 
