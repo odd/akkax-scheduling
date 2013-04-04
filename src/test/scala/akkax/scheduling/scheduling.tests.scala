@@ -8,6 +8,9 @@ import akka.actor.{ActorSystem, Props, Actor}
 import java.util.concurrent.TimeUnit
 import java.text.SimpleDateFormat
 import java.io.File
+import mapdb.MapDBSchedulingQueue
+import akkax.scheduling.memory.MemorySchedulingQueue
+import akkax.scheduling.sql.SqlSchedulingQueue
 
 trait SchedulingTests { this: FunSuite =>
   def withQueue(createQueue: => SchedulingQueue) {
@@ -36,7 +39,7 @@ trait SchedulingTests { this: FunSuite =>
 
       Thread.sleep(10000L)
 
-      (actor ? Fetch) foreach {
+      (actor ? RecordingActor.Fetch) foreach {
         case xs: List[String] => assert(List("zero", "four", "two", "one", "three") === xs)
         case x ⇒ sys.error("Unknown reply: " + x)
       }
@@ -51,7 +54,7 @@ trait SchedulingTests { this: FunSuite =>
 
       Thread.sleep(10000L)
 
-      (actor ? Fetch) foreach {
+      (actor ? RecordingActor.Fetch) foreach {
         case xs: List[String] => assert(List("zero", "one", "three") === xs)
         case x ⇒ sys.error("Unknown reply: " + x)
       }
@@ -63,14 +66,16 @@ trait SchedulingTests { this: FunSuite =>
 }
 
 class SchedulingSuite extends FunSuite with SchedulingTests {
-  //def queues = Seq(new MemoryScheduledMessageQueue, new MapDBMemoryScheduledMessageQueue(new File("./akkax-scheduling-map.db")))
-  def queues = Seq(new MapDBSchedulingQueue(new File("./.akkax-scheduling-map.db")))
+  //def queues = Seq(new MemorySchedulingQueue, new MapDBSchedulingQueue(new File("./akkax-scheduling.db")))
+  def queues = Seq(new SqlSchedulingQueue(Some("org.hsqldb.jdbc.JDBCDriver"), Some("jdbc:hsqldb:mem:mymemdb")).withTableCreation())
+  //def queues = Seq(new MapDBSchedulingQueue(new File("./.akkax-scheduling.db")))
   //def queues = Seq()
 
   queues.foreach(q => testsFor(withQueue(q)))
 }
 
 class RecordingActor extends Actor {
+  import RecordingActor._
   val log = Logging(context.system, this)
   var messages: List[Any] = Nil
 

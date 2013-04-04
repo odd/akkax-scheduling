@@ -21,9 +21,9 @@ To schedule a message to an actor the following syntax is provided:
     actor.tellAt("foo", "2013-06-01T10:30:00")
 ```
 
-Three scheduled message queue implementations are provided:
+Three scheduling queue implementations are provided:
 * MemorySchedulingQueue - In memory queue which is not durable
 * MapDBSchedulingQueue - Backed by a [MapDB] (http://www.mapdb.org/) map (made durable via the file system)
-* SqlSchedulingQueue - Backed by a SQL capable database
+* SqlSchedulingQueue - Backed by a SQL capable database (using [Prequel] (https://github.com/jpersson/prequel))
 
 To implement your own scheduling queue you need to implement the SchedulingQueue trait.

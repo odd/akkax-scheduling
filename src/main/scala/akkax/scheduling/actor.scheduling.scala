@@ -10,21 +10,9 @@ import scala.concurrent.duration.Duration
 import akka.actor._
 import akka.serialization.Serialization
 
-case class ScheduledMessage(@transient senderRef: Option[ActorRef] = None, @transient receiverRef: ActorRef, message: Any, expression: String) {
-  val senderId: Option[String] = senderRef.map { ref =>
-    Serialization.currentTransportAddress.value match {
-        case null    ⇒ ref.path.toString
-        case address ⇒ ref.path.toStringWithAddress(address)
-    }
-  }
-  val receiverId: Option[String] = Option(receiverRef).map { ref =>
-    Serialization.currentTransportAddress.value match {
-      case null    ⇒ ref.path.toString
-      case address ⇒ ref.path.toStringWithAddress(address)
-    }
-  }
+case class ScheduledMessage(senderId: Option[String] = None, receiverId: String, message: Any, expression: String) {
   def sender(implicit system: ActorSystem): Option[ActorRef] = senderId.map(system.actorFor)
-  def receiver(implicit system: ActorSystem): ActorRef = system.actorFor(receiverId.getOrElse(throw new IllegalStateException("Sentinel actor ref should never be used.")))
+  def receiver(implicit system: ActorSystem): ActorRef = Option(receiverId).map(system.actorFor).getOrElse(throw new IllegalStateException("Receiver can not be found when id is null."))
   def nextOccurrence: Option[Long] = expression match {
     case ScheduledMessage.Nanos(millis) =>
       val time = millis.toLong
@@ -44,6 +32,23 @@ case class ScheduledMessage(@transient senderRef: Option[ActorRef] = None, @tran
 object ScheduledMessage {
   val Nanos: Regex = """^([1-9]+\d*)$""".r
   val Timestamp: Regex = """^(\d{4,})-(\d{2})-(\d{2})(?:T(\d{2})(?::(\d{2})(?::(\d{2})(?:\.(\d{3}))?)?)?)?([+-]\d{1,2}:\d{2})?$""".r
+
+  def apply(receiver: ActorRef, message: Any, expression: String): ScheduledMessage = apply(None, receiver, message, expression)
+  def apply(sender: Option[ActorRef], receiver: ActorRef, message: Any, expression: String): ScheduledMessage = {
+    val senderId: Option[String] = sender.map { ref =>
+      Serialization.currentTransportAddress.value match {
+          case null    ⇒ ref.path.toString
+          case address ⇒ ref.path.toStringWithAddress(address)
+      }
+    }
+    val receiverId: Option[String] = Option(receiver).map { ref =>
+      Serialization.currentTransportAddress.value match {
+        case null    ⇒ ref.path.toString
+        case address ⇒ ref.path.toStringWithAddress(address)
+      }
+    }
+    new ScheduledMessage(senderId, receiverId.get, message, expression)
+  }
 }
 
 trait SchedulingQueue { self =>

@@ -16,5 +16,9 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "1.9.1" % "test"
 
 libraryDependencies += "org.mapdb" % "mapdb" % "0.9-SNAPSHOT" // Apache 2.0
 
+libraryDependencies += "net.noerd" %% "prequel" % "0.3.8" // wtfpl
+
+libraryDependencies += "org.hsqldb" % "hsqldb" % "2.2.4" % "test"
+
 //libraryDependencies += "com.github.philcali" %% "cronish" % "0.1.3" // MIT
 

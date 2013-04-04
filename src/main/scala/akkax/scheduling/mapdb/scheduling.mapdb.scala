@@ -20,9 +20,9 @@ class MapDBSchedulingQueue(file: File, password: Option[String] = None) extends 
   val committing = new AtomicBoolean(false)
 
   private [this] val sentinelKey = Long.MaxValue
-  private [this] def fetchSentinel: Option[Long] = Option(map.putIfAbsent(sentinelKey, Array(ScheduledMessage(None, null, null, "0")))).map(_.apply(0).expression.toLong)
+  private [this] def fetchSentinel: Option[Long] = Option(map.putIfAbsent(sentinelKey, Array(ScheduledMessage(None, null: String, null, "0")))).map(_.apply(0).expression.toLong)
   private [this] def storeSentinel(value: Long) = {
-    map.replace(sentinelKey, Array(ScheduledMessage(None, null, null, value.toString)))
+    map.replace(sentinelKey, Array(ScheduledMessage(None: Option[String], null, null, value.toString)))
   }
 
   private [this] def commit() {
