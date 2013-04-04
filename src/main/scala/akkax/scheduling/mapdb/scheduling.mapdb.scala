@@ -16,7 +16,8 @@ class MapDBSchedulingQueue(file: File, password: Option[String] = None) extends 
   }
   val map: ConcurrentNavigableMap[Long, Array[ScheduledMessage]] = db.getTreeMap("akkax-scheduling-map")
   println(map.asScala.mkString("!!! Loaded persistent messages:", "\n\t", "\n"))
-  val commiting = new AtomicBoolean(false)
+
+  val committing = new AtomicBoolean(false)
 
   private [this] val sentinelKey = Long.MaxValue
   private [this] def fetchSentinel: Option[Long] = Option(map.putIfAbsent(sentinelKey, Array(ScheduledMessage(None, null, null, "0")))).map(_.apply(0).expression.toLong)
@@ -25,9 +26,9 @@ class MapDBSchedulingQueue(file: File, password: Option[String] = None) extends 
   }
 
   private [this] def commit() {
-    if (commiting.compareAndSet(false, true)) {
+    if (committing.compareAndSet(false, true)) {
       db.commit()
-      commiting.compareAndSet(true, false)
+      committing.compareAndSet(true, false)
     }
   }
 
