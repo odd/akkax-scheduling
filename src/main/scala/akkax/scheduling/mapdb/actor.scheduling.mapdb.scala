@@ -1,14 +1,14 @@
-package akkax.actor.scheduling
+package akkax.scheduling
 package mapdb
 
+import collection.JavaConverters._
 import akka.actor.{Cancellable, ActorRef}
-import org.mapdb.{DB, DBMaker}
 import java.io.File
 import java.util.concurrent.ConcurrentNavigableMap
 import java.util.concurrent.atomic.AtomicBoolean
-import collection.JavaConverters._
+import org.mapdb.{DB, DBMaker}
 
-class MapDBMemoryScheduledMessageQueue(file: File, password: Option[String] = None) extends ScheduledMessageQueue { self =>
+class MapDBSchedulingQueue(file: File, password: Option[String] = None) extends SchedulingQueue { self =>
   val db: DB = {
     val db = DBMaker.newFileDB(file).closeOnJvmShutdown()
     password.foreach(db.encryptionEnable)
