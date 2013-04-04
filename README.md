@@ -23,7 +23,7 @@ To schedule a message to an actor the following syntax is provided:
 
 Three scheduled message queue implementations are provided:
 * MemorySchedulingQueue - In memory queue which is not durable
-* MapDBSchedulingQueue - Backed by a MapDB map which is made durable via files
-* SqlSchedulingQueue - Backed by any SQL capable database
+* MapDBSchedulingQueue - Backed by a [MapDB] (http://www.mapdb.org/) map (made durable via the file system)
+* SqlSchedulingQueue - Backed by a SQL capable database
 
 To implement your own scheduling queue you need to implement the SchedulingQueue trait.
