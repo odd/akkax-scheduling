@@ -22,7 +22,7 @@ class SqlSchedulingQueue(driver: Option[String] = None, jdbcUrl: Option[String] 
 
   def withTableCreation(): SqlSchedulingQueue = {
     database.transaction { tx =>
-      tx.execute("create table ScheduledMessage (" +
+      tx.execute("create table if not exists ScheduledMessage (" +
         "created char(23) not null, " +
         "senderId varchar(255) not null, " +
         "receiverId varchar(255) not null, " +
@@ -31,7 +31,7 @@ class SqlSchedulingQueue(driver: Option[String] = None, jdbcUrl: Option[String] 
         "expression varchar(255) not null, " +
         "timestamp bigint not null, " +
         "status varchar(255) not null, " +
-        "primary key (senderId, receiverId, messageBytes, expression))")
+        "primary key (senderId, receiverId, messageHash, expression))")
     }
     this
   }
@@ -43,6 +43,7 @@ class SqlSchedulingQueue(driver: Option[String] = None, jdbcUrl: Option[String] 
     assert(sm.expression != null, s"Expression must not be null [$sm].")
     val bytes = serialize(sm.message)
     val hash = MurmurHash3.bytesHash(bytes)
+    println(s"!!! bytes with hash #$hash ('${sm.message}'): ${bytes.map(_.toInt).mkString(" ")}")
     database.transaction { tx =>
       tx.execute(
         "insert into ScheduledMessage(created, senderId, receiverId, messageBytes, messageHash, expression, timestamp, status) values (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -53,10 +54,12 @@ class SqlSchedulingQueue(driver: Option[String] = None, jdbcUrl: Option[String] 
 
   def peek(time: Long): Iterable[ScheduledMessage] = {
     database.transaction { tx =>
-      tx.select("select senderId, receiverId, messageBytes, expression from ScheduledMessage where status = ? and timestamp < ? order by timestamp asc", Pending.toString, time) { r =>
+      tx.select("select senderId, receiverId, messageBytes, messageHash, expression from ScheduledMessage where status = ? and timestamp < ? order by timestamp asc", Pending.toString, time) { r =>
         val senderId: Option[String] = r.nextString
         val receiverId: String = r.nextString.get
         val bytes: Array[Byte] = r.nextBinary.get
+        val hash: Int = r.nextInt.get
+        println(s"!!! bytes with hash #$hash: ${bytes.map(_.toInt).mkString(" ")}")
         val message: Any = deserialize(bytes)
         val expression: String = r.nextString.get
 
@@ -67,10 +70,12 @@ class SqlSchedulingQueue(driver: Option[String] = None, jdbcUrl: Option[String] 
 
   def dequeue(time: Long) = {
     database.transaction { tx =>
-      val messages = tx.select("select senderId, receiverId, messageBytes, expression from ScheduledMessage where status = ? and timestamp < ? order by timestamp", Pending.toString, time) { r =>
+      val messages = tx.select("select senderId, receiverId, messageBytes, messageHash, expression from ScheduledMessage where status = ? and timestamp < ? order by timestamp", Pending.toString, time) { r =>
         val senderId: Option[String] = r.nextString.filter(_ != "")
         val receiverId: String = r.nextString.get
         val bytes: Array[Byte] = r.nextBinary.get
+        val hash: Int = r.nextInt.get
+        println(s"!!! bytes with hash #$hash: ${bytes.map(_.toInt).mkString(" ")}")
         val message: Any = deserialize(bytes)
         val expression: String = r.nextString.get
 

@@ -67,7 +67,8 @@ trait SchedulingTests { this: FunSuite =>
 
 class SchedulingSuite extends FunSuite with SchedulingTests {
   //def queues = Seq(new MemorySchedulingQueue, new MapDBSchedulingQueue(new File("./akkax-scheduling.db")))
-  def queues = Seq(new SqlSchedulingQueue(Some("org.hsqldb.jdbc.JDBCDriver"), Some("jdbc:hsqldb:mem:mymemdb")).withTableCreation())
+  //def queues = Seq(new SqlSchedulingQueue(Some("org.hsqldb.jdbc.JDBCDriver"), Some("jdbc:hsqldb:mem:mymemdb")).withTableCreation())
+  def queues = Seq(new SqlSchedulingQueue(Some("com.mysql.jdbc.Driver"), Some("jdbc:mysql://localhost:3306/test_akka_scheduling?profileSQL=false&createDatabaseIfNotExist=true")).withTableCreation())
   //def queues = Seq(new MapDBSchedulingQueue(new File("./.akkax-scheduling.db")))
   //def queues = Seq()
 
