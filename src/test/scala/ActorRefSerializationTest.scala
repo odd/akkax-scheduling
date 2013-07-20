@@ -12,10 +12,7 @@ object ActorRefSerializationTest {
     println("La")
     val bytes1 = new ByteArrayOutputStream()
     val ref1 = system.actorOf(Props[LoggingActor])
-    val identifier1: String = Serialization.currentTransportAddress.value match {
-      case null    ⇒ ref1.path.toString
-      case address ⇒ ref1.path.toStringWithAddress(address)
-    }
+    val identifier1: String = ref1.path.toString
     val out = new ObjectOutputStream(bytes1)
     out.writeObject(identifier1)
     out.close()
@@ -25,7 +22,7 @@ object ActorRefSerializationTest {
     val identifier2 = in.readObject().asInstanceOf[String]
     println(s"$identifier1 - $identifier2")
     assert(identifier1 == identifier2)
-    val ref2 = system.actorFor(identifier2)
+    val ref2 = system.actorSelection(identifier2)
     println(s"$ref1 - $ref2")
     assert(ref1 == ref2)
 

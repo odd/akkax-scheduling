@@ -3,13 +3,14 @@ package akkax.actor.scheduling
 import collection._
 import scala.util.matching.Regex
 import java.util.concurrent.atomic.{AtomicReference, AtomicBoolean}
-import javax.naming.OperationNotSupportedException
 import java.util.{TimeZone, Calendar, GregorianCalendar}
 import akka.actor._
 import scala.concurrent.duration.Duration
 import java.util.concurrent.TimeUnit
 import java.io.{ObjectOutput, ObjectInput, Externalizable}
-import akka.serialization.Serialization
+import scala.concurrent.Await
+import akka.util.Timeout
+import scala.concurrent.duration._
 
 class RichActorRef(actorRef: ActorRef, system: ActorSystem) {
   def !@(messageWithExpression: Pair[Any, String])(implicit sender: ActorRef = null): Cancellable = {
@@ -107,20 +108,19 @@ object SchedulingExtension extends ExtensionId[SchedulingExtension] with Extensi
 
 //case class ScheduledMessage(sender: Option[ActorRef] = None, receiver: ActorRef, message: Any, expression: String) {
 case class ScheduledMessage(@transient senderRef: Option[ActorRef] = None, @transient receiverRef: ActorRef, message: Any, expression: String) {
-  val senderId: Option[String] = senderRef.map { ref =>
-    Serialization.currentTransportAddress.value match {
-        case null    ⇒ ref.path.toString
-        case address ⇒ ref.path.toStringWithAddress(address)
+  def actorRef(selection: ActorSelection)(implicit timeout: Timeout = Timeout(5 seconds)): ActorRef = {
+    import akka.pattern.ask
+    val id = selection.toString
+    Await.result((selection ? Identify(id)).mapTo[ActorIdentity], timeout.duration) match {
+      case ActorIdentity(`id`, Some(ref)) => ref
+      case _ => null
     }
   }
-  val receiverId: Option[String] = Option(receiverRef).map { ref =>
-    Serialization.currentTransportAddress.value match {
-      case null    ⇒ ref.path.toString
-      case address ⇒ ref.path.toStringWithAddress(address)
-    }
-  }
-  def sender(implicit system: ActorSystem): Option[ActorRef] = senderId.map(system.actorFor)
-  def receiver(implicit system: ActorSystem): ActorRef = system.actorFor(receiverId.getOrElse(throw new IllegalStateException("Sentinel actor ref should never be used.")))
+
+  val senderPath: Option[ActorPath] = senderRef.map(_.path)
+  val receiverPath: Option[ActorPath] = Option(receiverRef).map(_.path)
+  def sender(implicit system: ActorSystem): Option[ActorRef] = senderPath.map(system.actorSelection).map(actorRef)
+  def receiver(implicit system: ActorSystem): ActorSelection = system.actorSelection(receiverPath.getOrElse(throw new IllegalStateException("Sentinel actor ref should never be used.")))
   def nextOccurrence: Option[Long] = expression match {
     case ScheduledMessage.Nanos(millis) =>
       val time = millis.toLong
