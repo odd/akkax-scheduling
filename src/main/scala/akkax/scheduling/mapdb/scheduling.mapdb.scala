@@ -1,14 +1,14 @@
-package akkax.actor.scheduling
+package akkax.scheduling
 package mapdb
 
-import akka.actor.{Cancellable, ActorRef}
-import org.mapdb.{DB, DBMaker}
+import collection.JavaConverters._
+import akka.actor.{ActorPath, Cancellable, ActorRef}
 import java.io.File
 import java.util.concurrent.ConcurrentNavigableMap
 import java.util.concurrent.atomic.AtomicBoolean
-import collection.JavaConverters._
+import org.mapdb.{DB, DBMaker}
 
-class MapDBMemoryScheduledMessageQueue(file: File, password: Option[String] = None) extends ScheduledMessageQueue { self =>
+class MapDBSchedulingQueue(file: File, password: Option[String] = None) extends SchedulingQueue { self =>
   val db: DB = {
     val db = DBMaker.newFileDB(file).closeOnJvmShutdown()
     password.foreach(db.encryptionEnable)
@@ -16,18 +16,19 @@ class MapDBMemoryScheduledMessageQueue(file: File, password: Option[String] = No
   }
   val map: ConcurrentNavigableMap[Long, Array[ScheduledMessage]] = db.getTreeMap("akkax-scheduling-map")
   println(map.asScala.mkString("!!! Loaded persistent messages:", "\n\t", "\n"))
-  val commiting = new AtomicBoolean(false)
+
+  val committing = new AtomicBoolean(false)
 
   private [this] val sentinelKey = Long.MaxValue
-  private [this] def fetchSentinel: Option[Long] = Option(map.putIfAbsent(sentinelKey, Array(ScheduledMessage(None, null, null, "0")))).map(_.apply(0).expression.toLong)
+  private [this] def fetchSentinel: Option[Long] = Option(map.putIfAbsent(sentinelKey, Array(ScheduledMessage(None, null: ActorPath, null, "0")))).map(_.apply(0).expression.toLong)
   private [this] def storeSentinel(value: Long) = {
-    map.replace(sentinelKey, Array(ScheduledMessage(None, null, null, value.toString)))
+    map.replace(sentinelKey, Array(ScheduledMessage(None: Option[ActorPath], null, null, value.toString)))
   }
 
   private [this] def commit() {
-    if (commiting.compareAndSet(false, true)) {
+    if (committing.compareAndSet(false, true)) {
       db.commit()
-      commiting.compareAndSet(true, false)
+      committing.compareAndSet(true, false)
     }
   }
 

@@ -1,11 +1,11 @@
-package akkax.actor.scheduling
+package akkax.scheduling
 package memory
 
 import akka.actor.{Cancellable, ActorRef}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.{SortedMap, Iterable}
 
-class MemoryScheduledMessageQueue extends ScheduledMessageQueue { self =>
+class MemorySchedulingQueue extends SchedulingQueue { self =>
   var queue = SortedMap[Long, ScheduledMessage]()
 
   def enqueue(time: Long, sm: ScheduledMessage) = {
@@ -24,10 +24,7 @@ class MemoryScheduledMessageQueue extends ScheduledMessageQueue { self =>
 
 
   def cancel(sm: ScheduledMessage) {
-    queue = queue.filterNot{ t =>
-      //println("cancel: " + t)
-      t._2 == sm
-    }
+    queue = queue filterNot (_._2 == sm)
   }
 }
 
