@@ -11,6 +11,7 @@ import java.io.File
 import mapdb.MapDBSchedulingQueue
 import akkax.scheduling.memory.MemorySchedulingQueue
 import akkax.scheduling.sql.SqlSchedulingQueue
+import akka.testkit.TestActorRef
 
 trait SchedulingTests { this: FunSuite =>
   def withQueue(createQueue: => SchedulingQueue) {
@@ -25,13 +26,10 @@ trait SchedulingTests { this: FunSuite =>
 
     test(s"scheduled messages are scheduled [${queue.getClass.getSimpleName}]") {
       println(s"test: scheduled messages are scheduled")
-      val actor1 = system.actorOf(Props[RecordingActor], name = "kalle")
-      println(s"actor1: $actor1")
-      actor1 ! "zero"
+      val actor = TestActorRef(new RecordingActor)
+      actor ! "zero"
       Thread.sleep(1000L)
 
-      val actor = system.actorFor("akka://TestSystem/user/kalle")
-      println(s"actor: $actor")
       actor !@ "one" -> laterLiteral(3)
       actor !@ "two" -> laterLiteral(1)
       actor !@ "three" -> laterMilliseconds(7).toString
@@ -40,12 +38,12 @@ trait SchedulingTests { this: FunSuite =>
       Thread.sleep(10000L)
 
       (actor ? RecordingActor.Fetch) foreach {
-        case xs: List[String] => assert(List("zero", "four", "two", "one", "three") === xs)
+        case xs: List[_] => assert(List("zero", "four", "two", "one", "three") === xs)
         case x ⇒ sys.error("Unknown reply: " + x)
       }
     }
     test(s"scheduled messages can be cancelled [${queue.getClass.getSimpleName}]") {
-      val actor = system.actorOf(Props[RecordingActor])
+      val actor = TestActorRef(new RecordingActor)
       actor ! "zero"
       val one = actor !@ "one" -> laterLiteral(1)
       val two = actor !@ "two" -> laterLiteral(3)
@@ -55,7 +53,7 @@ trait SchedulingTests { this: FunSuite =>
       Thread.sleep(10000L)
 
       (actor ? RecordingActor.Fetch) foreach {
-        case xs: List[String] => assert(List("zero", "one", "three") === xs)
+        case xs: List[_] => assert(List("zero", "one", "three") === xs)
         case x ⇒ sys.error("Unknown reply: " + x)
       }
     }

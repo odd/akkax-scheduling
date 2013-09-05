@@ -22,7 +22,8 @@ class SqlSchedulingQueue(driver: Option[String] = None, jdbcUrl: Option[String] 
 
   def withTableCreation(): SqlSchedulingQueue = {
     database.transaction { tx =>
-      tx.execute("create table if not exists ScheduledMessage (" +
+      tx.execute("drop table if exists ScheduledMessage")
+      tx.execute("create table ScheduledMessage (" +
         "created char(23) not null, " +
         "senderPath varchar(255) not null, " +
         "receiverPath varchar(255) not null, " +
