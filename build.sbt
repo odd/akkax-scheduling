@@ -1,6 +1,6 @@
 organization := "org.bitbonanza"
 
-name := "Akka X Scheduling"
+name := "Akkax Scheduling"
 
 scalaVersion := "2.10.2"
 
@@ -10,7 +10,9 @@ resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/snapsho
 
 libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.3-SNAPSHOT"
 
-//libraryDependencies += "com.typesafe.akka" %% "akka-remote" % "2.3-SNAPSHOT"
+libraryDependencies += "com.typesafe.akka" %% "akka-kernel" % "2.3-SNAPSHOT"
+
+libraryDependencies += "com.typesafe.akka" %% "akka-persistence-experimental" % "2.3-SNAPSHOT"
 
 libraryDependencies += "com.typesafe.akka" %% "akka-testkit" % "2.3-SNAPSHOT" % "test"
 

@@ -40,6 +40,24 @@ class SchedulingExtension(system: ExtendedActorSystem) extends Extension {
   }
 }
 
+object SchedulingExtension extends ExtensionId[SchedulingExtension] with ExtensionIdProvider {
+  def apply(system: ActorSystem, queue: SchedulingQueue, validator: ScheduledMessage => Boolean = { _ => true }): SchedulingExtension = {
+    val extension = super.apply(system)
+    extension.registerQueue(queue, validator)
+    extension
+  }
+  def createExtension(system: ExtendedActorSystem) = new SchedulingExtension(system)
+  def lookup() = SchedulingExtension
+}
+
+class SchedulingActorRef(actorRef: ActorRef, system: ActorSystem) {
+  def !@(messageWithExpression: Pair[Any, String])(implicit sender: ActorRef = null): Cancellable = {
+    SchedulingExtension(system).schedule(sender = Option(sender), receiver = actorRef, message = messageWithExpression._1, expression = messageWithExpression._2)
+  }
+  def tellAt(message: Any, expression: String)(): Cancellable = this.!@((message, expression))(null: ActorRef)
+  def tellAt(message: Any, expression: String, sender: ActorRef): Cancellable = this.!@((message, expression))(sender)
+}
+
 object SchedulingWorker {
   trait SchedulingMessage
   case class Schedule(sender: Option[ActorRef] = None, receiver: ActorRef, message: Any, expression: String) extends SchedulingMessage
@@ -63,24 +81,4 @@ class SchedulingWorker(queue: SchedulingQueue, validator: ScheduledMessage => Bo
       }
   }
 }
-
-
-object SchedulingExtension extends ExtensionId[SchedulingExtension] with ExtensionIdProvider {
-  def apply(system: ActorSystem, queue: SchedulingQueue, validator: ScheduledMessage => Boolean = { _ => true }): SchedulingExtension = {
-    val extension = super.apply(system)
-    extension.registerQueue(queue, validator)
-    extension
-  }
-  def createExtension(system: ExtendedActorSystem) = new SchedulingExtension(system)
-  def lookup() = SchedulingExtension
-}
-
-class SchedulingActorRef(actorRef: ActorRef, system: ActorSystem) {
-  def !@(messageWithExpression: Pair[Any, String])(implicit sender: ActorRef = null): Cancellable = {
-    SchedulingExtension(system).schedule(sender = Option(sender), receiver = actorRef, message = messageWithExpression._1, expression = messageWithExpression._2)
-  }
-  def tellAt(message: Any, expression: String)(): Cancellable = this.!@((message, expression))(null: ActorRef)
-  def tellAt(message: Any, expression: String, sender: ActorRef): Cancellable = this.!@((message, expression))(sender)
-}
-
 
