@@ -4,7 +4,7 @@ package persistence.scheduling
 import akka.actor._
 import akka.persistence.{SnapshotOffer, EventsourcedProcessor}
 import akka.pattern.ask
-import scala.concurrent.{Await, Future, Promise}
+import scala.concurrent.{ExecutionContext, Await, Future, Promise}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 import java.util.concurrent.TimeUnit
@@ -41,6 +41,17 @@ class PersistentScheduling(system: ExtendedActorSystem, snapshotInterval: Durati
    */
   implicit def enrichActorRef(actorRef: ActorRef)(implicit system: ActorSystem): PersistentSchedulingActorRef = new PersistentSchedulingActorRef(actorRef, system)
 }
+
+class PersistentScheduler extends akka.actor.Scheduler {
+  def maxFrequency = Double
+
+  def scheduleOnce(delay: FiniteDuration, runnable: Runnable)(implicit executor: ExecutionContext) = ???
+
+  def schedule(initialDelay: FiniteDuration, interval: FiniteDuration, runnable: Runnable)(implicit executor: ExecutionContext) = ???
+}
+
+
+
 object Scheduler {
   trait Command
   trait Event {
