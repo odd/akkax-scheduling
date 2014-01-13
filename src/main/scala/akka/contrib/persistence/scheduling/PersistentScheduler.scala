@@ -12,6 +12,7 @@ import akka.contrib.persistence.scheduling.Schedules.Singular
 import akka.persistence.{SnapshotOffer, EventsourcedProcessor}
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import akka.util.Timeout
 
 case class PersistentSchedulerException(msg: String) extends akka.AkkaException(msg) with NoStackTrace
 
@@ -29,37 +30,18 @@ trait PersistentScheduler {
    *
    * Java & Scala API
    */
-  final def schedule(
-    initialDelay: FiniteDuration,
-    interval: FiniteDuration,
-    receiver: ActorRef,
-    message: Any)(implicit executor: ExecutionContext,
-                  sender: ActorRef = Actor.noSender): Cancellable =
-    schedule(Schedules.Interval(now + initialDelay.length, interval), receiver, message)
-
   def schedule(
     schedule: Schedule,
     receiver: ActorRef,
     message: Any)(implicit executor: ExecutionContext,
+                  timeout: Timeout,
                   sender: ActorRef = Actor.noSender): Cancellable
-
-  /**
-   * Schedules a message to be sent once with a delay, i.e. a time period that has
-   * to pass before the message is sent.
-   *
-   * Java & Scala API
-   */
-  final def scheduleOnce(
-    delay: FiniteDuration,
-    receiver: ActorRef,
-    message: Any)(implicit executor: ExecutionContext,
-                  sender: ActorRef = Actor.noSender): Cancellable =
-    scheduleOnce(Schedules.Singular(now + delay.length), receiver, message)
 
   def scheduleOnce(
     schedule: Schedules.Singular,
     receiver: ActorRef,
     message: Any)(implicit executor: ExecutionContext,
+                  timeout: Timeout,
                   sender: ActorRef = Actor.noSender): Cancellable
 
   /**
@@ -73,14 +55,13 @@ trait PersistentScheduler {
 abstract class AbstractPersistentSchedulerBase extends PersistentScheduler
 
 trait Schedule {
-  def nextOccurrence: Option[Long]
+  def next: Option[Long]
 }
 object Schedules {
-
-  case class Interval(startTime: Long, interval: FiniteDuration) extends Schedule {
-    def nextOccurrence = {
-      val now: Long = System.currentTimeMillis()
-      Some(now + ((now - startTime) % interval.length))
+  case class Every(interval: FiniteDuration, first: Long = 0) extends Schedule {
+    def next = {
+      val now = System.currentTimeMillis()
+      Some(now + ((now - first) % interval.length))
     }
   }
   object Singular {
@@ -91,19 +72,24 @@ object Schedules {
         val calendar = new GregorianCalendar(int(year), int(month) - 1, int(day), int(hour), int(minute), int(second))
         if (timeZone != null && timeZone != "") calendar.setTimeZone(TimeZone.getTimeZone("GMT" + timeZone))
         calendar.set(Calendar.MILLISECOND, int(millis))
-        Singular(calendar.getTimeInMillis)
+        At(calendar.getTimeInMillis)
       case _ =>
         sys.error("Unknown timestamp schedule format (expected ISO 8601): " + isoTimestamp)
     }
   }
-  case class Singular(timestamp: Long) extends Schedule {
-    def nextOccurrence: Option[Long] = {
-      if (timestamp >= System.currentTimeMillis()) Some(timestamp)
+  trait Singular extends Schedule {
+    val time: Long
+    def next: Option[Long] = {
+      if (time >= System.currentTimeMillis()) Some(time)
       else None
     }
   }
+  case class At(time: Long) extends Singular
+  case class In(delay: Long) extends Singular {
+    val time = System.currentTimeMillis() + delay
+  }
   case class Cron(expression: String) extends Schedule {
-    def nextOccurrence = ???
+    def next = ???
   }
 }
 
@@ -119,10 +105,10 @@ class DefaultPersistentScheduler(implicit system: ActorSystem) extends Persisten
   def maxFrequency = 1000L
 
   def scheduleOnce(s: Singular, receiver: ActorRef, message: Any)
-                  (implicit executor: ExecutionContext, sender: ActorRef = Actor.noSender) = 
+                  (implicit executor: ExecutionContext, timeout: Timeout, sender: ActorRef = Actor.noSender) =
     schedule(s, receiver, message)
 
-  def schedule(s: Schedule, receiver: ActorRef, message: Any)(implicit executor: ExecutionContext, sender: ActorRef): Cancellable = {
+  def schedule(s: Schedule, receiver: ActorRef, message: Any)(implicit executor: ExecutionContext, timeout: Timeout, sender: ActorRef = Actor.noSender): Cancellable = {
     val f = (scheduler ? Register(s, receiver, message, sender)).mapTo[Long]
     new Cancellable {
       private[this] val cancelled = new AtomicBoolean(false)
@@ -159,6 +145,11 @@ private[scheduling] object Scheduler {
     def nextId() = maxId + 1
     override def toString: String = schedules.mkString("Schedules (max id: " + maxId + "):\n", "\n\t", "\n")
   }
+  object Invocation {
+    def unapply(r: Registered)(implicit system: ActorSystem): Option[(Id, Schedule, ActorRef, Any, Option[ActorRef], Option[Long])] = {
+      Some((r.id, r.schedule, r.receiver, r.message, r.sender, r.schedule.next))
+    }
+  }
 }
 private[scheduling] class Scheduler(snapshotInterval: Duration) extends EventsourcedProcessor with ActorLogging {
   import Scheduler._
@@ -168,15 +159,18 @@ private[scheduling] class Scheduler(snapshotInterval: Duration) extends Eventsou
   private[this] var nanos = System.nanoTime()
   private[this] var cancellables = Map.empty[Long, Cancellable]
 
+  private[this] def now = System.currentTimeMillis()
+
   override def preStart() = {
     super.preStart()
     val now = System.currentTimeMillis()
     cancellables = state.schedules.collect {
-      case (id, sm @ ScheduledMessage(ScheduledMessage(messageSender, receiver, message, expression, time))) if (time > System.currentTimeMillis()) =>
-        (id, system.scheduler.scheduleOnce(Duration(time, TimeUnit.MILLISECONDS), receiver, message)(system.dispatcher, messageSender))
+      case (id, i @ Invocation(_, schedule, receiver, message, messageSender, Some(time))) if (time > now) =>
+        (id, system.scheduler.scheduleOnce(Duration(time, TimeUnit.MILLISECONDS), receiver, message)(system.dispatcher, messageSender.getOrElse(Actor.noSender)))
     }
     state = state.copy(schedules = state.schedules.filterKeys(cancellables.keySet))
   }
+
 
   def update(e: Event): Unit = e match {
     case r: Registered =>
@@ -192,8 +186,8 @@ private[scheduling] class Scheduler(snapshotInterval: Duration) extends Eventsou
   }
 
   val receiveCommand: Receive = {
-    case r @ Register(messageSender, receiver, message, expression) =>
-      persist(Registered(state.nextId(), r))(update)
+    case r @ Register(schedule, receiver, message, sender) =>
+      persist(Registered(state.nextId(), schedule, receiver, message, Option(sender)))(update)
     case c @ Cancel(id) =>
       persist(Cancelled(id))(update)
   }

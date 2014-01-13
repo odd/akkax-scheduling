@@ -93,7 +93,7 @@ class Scheduler(snapshotInterval: Duration) extends EventsourcedProcessor with A
     val now = System.currentTimeMillis()
     cancellables = state.schedules.collect {
       case (id, sm @ ScheduledMessage(ScheduledMessage(messageSender, receiver, message, expression, time))) if (time > System.currentTimeMillis()) =>
-        (id, system.scheduler.scheduleOnce(Duration(time, TimeUnit.MILLISECONDS), receiver, message)(system.dispatcher, messageSender))
+        (id, system.scheduler.scheduleOnce(Duration(time, TimeUnit.MILLISECONDS), receiver, message)(system.dispatcher, messageSender.getOrElse(Actor.noSender)))
     }
     state = state.copy(schedules = state.schedules.filterKeys(cancellables.keySet))
   }
