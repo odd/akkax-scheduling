@@ -137,7 +137,7 @@ private[scheduling] object Scheduler {
   }
   case class Register(schedule: Schedule, receiver: ActorRef, message: Any, sender: ActorRef) extends Command
   case class Cancel(id: Id) extends Command
-  case class Registered(id: Id, schedule: Schedule, receiver: ActorRef, message: Any, sender: Option[ActorRef] = None) extends Event
+  case class Registered(id: Id, schedule: Schedule, receiver: ActorRef, message: Any, sender: ActorRef) extends Event
   case class Cancelled(id: Id) extends Event
   case class State(maxId: Long = 0L, schedules: Map[Id, Registered] = Map.empty) {
     def update(r: Registered) = copy(maxId = math.max(maxId, r.id), schedules = schedules + (r.id -> r))
@@ -146,7 +146,7 @@ private[scheduling] object Scheduler {
     override def toString: String = schedules.mkString("Schedules (max id: " + maxId + "):\n", "\n\t", "\n")
   }
   object Invocation {
-    def unapply(r: Registered)(implicit system: ActorSystem): Option[(Id, Schedule, ActorRef, Any, Option[ActorRef], Option[Long])] = {
+    def unapply(r: Registered)(implicit system: ActorSystem): Option[(Id, Schedule, ActorRef, Any, ActorRef, Option[Long])] = {
       Some((r.id, r.schedule, r.receiver, r.message, r.sender, r.schedule.next))
     }
   }
@@ -166,7 +166,7 @@ private[scheduling] class Scheduler(snapshotInterval: Duration) extends Eventsou
     val now = System.currentTimeMillis()
     cancellables = state.schedules.collect {
       case (id, i @ Invocation(_, schedule, receiver, message, messageSender, Some(time))) if (time > now) =>
-        (id, system.scheduler.scheduleOnce(Duration(time, TimeUnit.MILLISECONDS), receiver, message)(system.dispatcher, messageSender.getOrElse(Actor.noSender)))
+        (id, system.scheduler.scheduleOnce(Duration(time, TimeUnit.MILLISECONDS), receiver, message)(system.dispatcher, messageSender))
     }
     state = state.copy(schedules = state.schedules.filterKeys(cancellables.keySet))
   }
@@ -186,9 +186,15 @@ private[scheduling] class Scheduler(snapshotInterval: Duration) extends Eventsou
   }
 
   val receiveCommand: Receive = {
-    case r @ Register(schedule, receiver, message, sender) =>
-      persist(Registered(state.nextId(), schedule, receiver, message, Option(sender)))(update)
+    case r @ Register(schedule, receiver, message, messageSender) =>
+      val r2: Registered = Registered(state.nextId(), schedule, receiver, message, messageSender)
+      persist(r2)(update)
+      val Invocation(id: Long, _, _, _, _, Some(time)) = r2
+      val c: Cancellable = system.scheduler.scheduleOnce(Duration(time, TimeUnit.MILLISECONDS), receiver, message)(system.dispatcher, messageSender)
+      cancellables += id -> c
     case c @ Cancel(id) =>
       persist(Cancelled(id))(update)
+      cancellables.get(id).foreach(_.cancel())
+      cancellables -= id
   }
 }
